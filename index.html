@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>SmileBASIC Command Test (30s Limit)</title>
+    <style>
+        body { background-color: #000; color: #00FF00; font-family: 'Courier New', monospace; padding: 20px; text-align: center; }
+        .container { max-width: 650px; margin: auto; border: 3px double #00FF00; padding: 20px; position: relative; text-align: left; }
+        
+        /* ヘッダー */
+        .header-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 1.2em; color: #FFFF00; }
+        
+        /* タイムゲージ */
+        .timer-bar-bg { width: 100%; height: 10px; background: #333; margin-bottom: 20px; border: 1px solid #00FF00; }
+        #timer-bar { width: 100%; height: 100%; background: #00FF00; transition: width 0.1s linear; }
+
+        /* 入力エリア */
+        input { background: #000; color: #00FF00; border: 1px solid #00FF00; padding: 10px; width: 60%; font-size: 1.2em; outline: none; text-transform: uppercase; }
+        input:focus { border-color: #00FFFF; }
+        button { background: #00FF00; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; font-family: inherit; }
+        
+        #shuffled-word { color: #00FFFF; font-size: 1.5em; letter-spacing: 4px; font-weight: bold; margin: 10px 0; }
+        #description { font-size: 1.1em; color: #FFF; min-height: 2.5em; border-left: 4px solid #00FF00; padding-left: 10px; }
+        
+        .message { margin-top: 20px; font-size: 1.8em; height: 1.8em; font-weight: bold; }
+        
+        /* リザルト画面 */
+        #result-screen { display: none; text-align: center; }
+        .rank-text { font-size: 2em; color: #FF00FF; margin: 20px 0; }
+        .restart-btn { background: #FFFF00; color: #000; padding: 15px 30px; font-size: 1.2em; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="game-screen">
+        <div class="header-info">
+            <div>QUESTION: <span id="q-number">1</span> / 10</div>
+            <div>SCORE: <span id="score">0</span></div>
+            <div>TIME: <span id="time-text">30.0</span>s</div>
+        </div>
+        
+        <div class="timer-bar-bg"><div id="timer-bar"></div></div>
+
+        <p id="description">PREPARING...</p>
+        <div style="color: #888; font-size: 0.8em;">SHUFFLED HINT:</div>
+        <div id="shuffled-word">--------</div>
+        
+        <div style="margin-top:20px;">
+            <input type="text" id="answer-input" placeholder="type command..." autocomplete="off">
+            <button onclick="checkAnswer()">OK</button>
+        </div>
+        
+        <div class="message" id="message"></div>
+        <div style="color: #666; font-size: 0.8em; margin-top: 10px;">[Enter] OK / [Space] Next / 大文字小文字不問</div>
+    </div>
+
+    <div id="result-screen">
+        <h1>TEST FINISHED!</h1>
+        <div style="font-size: 1.5em;">YOUR SCORE: <span id="final-score">0</span> / 10</div>
+        <div class="rank-text" id="rank-display">RANK: ???</div>
+        <button class="restart-btn" onclick="location.reload()">TRY AGAIN</button>
+    </div>
+</div>
+
+<script>
+// 動画の全データを統合
+const quizData = [
+    { ans: "BACKCOLOR", quest: "BASIC画面の背景色を設定する" },
+    { ans: "LOCATE", quest: "テキストの表示位置を設定する" },
+    { ans: "GFILL", quest: "塗りつぶした矩形を描く" },
+    { ans: "BGMSTOP", quest: "BGMの再生を停止する" },
+    { ans: "BGMVOL", quest: "BGMの音量を変更する" },
+    { ans: "HEX$", quest: "数値を16進数文字列にする" },
+    { ans: "INSTR", quest: "文字列の中から検索する" },
+    { ans: "LEFT$", quest: "文字列の左端を取り出す" },
+    { ans: "LEN", quest: "文字列の長さを得る" },
+    { ans: "FLOOR", quest: "小数点以下を切り捨てる" },
+    { ans: "PI", quest: "円周率を取得する" },
+    { ans: "POW", quest: "累乗を計算する" },
+    { ans: "GSAVE", quest: "グラフィックを保存する" },
+    { ans: "SPSHOW", quest: "スプライトを表示する" },
+    { ans: "VIBRATE", quest: "コントローラーを振動させる" },
+    { ans: "ACLS", quest: "画面全体を初期化する" },
+    { ans: "GCOLOR", quest: "描画色を指定する" },
+    { ans: "WAIT", quest: "指定した時間だけ待つ" }
+];
+
+let currentQuestionIndex = 0;
+let score = 0;
+let timeLeft = 30;
+const LIMIT_TIME = 30.0;
+let timerInterval = null;
+let canAnswer = false;
+let sessionQuizzes = [];
+
+function initGame() {
+    sessionQuizzes = [...quizData].sort(() => 0.5 - Math.random()).slice(0, 10);
+    showQuestion();
+}
+
+function showQuestion() {
+    if (currentQuestionIndex >= 10) {
+        showResult();
+        return;
+    }
+
+    canAnswer = true;
+    const current = sessionQuizzes[currentQuestionIndex];
+    
+    document.getElementById("q-number").innerText = currentQuestionIndex + 1;
+    document.getElementById("description").innerText = "問: " + current.quest;
+    document.getElementById("shuffled-word").innerText = shuffleString(current.ans);
+    
+    const inputField = document.getElementById("answer-input");
+    inputField.value = "";
+    inputField.disabled = false;
+    inputField.focus();
+    
+    document.getElementById("message").innerText = "";
+    startTimer();
+}
+
+function shuffleString(str) {
+    let arr = str.split('');
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr.join('');
+}
+
+function startTimer() {
+    timeLeft = LIMIT_TIME;
+    updateTimerUI();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        if (timeLeft <= 0) {
+            timeLeft = 0;
+            timeUp();
+        }
+        updateTimerUI();
+    }, 100);
+}
+
+function updateTimerUI() {
+    document.getElementById("time-text").innerText = timeLeft.toFixed(1);
+    const percent = (timeLeft / LIMIT_TIME) * 100;
+    const bar = document.getElementById("timer-bar");
+    bar.style.width = percent + "%";
+    bar.style.background = timeLeft < 5 ? "#FF0000" : "#00FF00";
+}
+
+function checkAnswer() {
+    if (!canAnswer) return;
+    
+    // 入力を大文字に統一して判定（これで小文字入力もOKになる）
+    const userInput = document.getElementById("answer-input").value.toUpperCase().trim();
+    const current = sessionQuizzes[currentQuestionIndex];
+
+    if (userInput === current.ans.toUpperCase()) {
+        clearInterval(timerInterval);
+        score++;
+        document.getElementById("score").innerText = score;
+        document.getElementById("message").style.color = "#00FF00";
+        document.getElementById("message").innerText = "〇 正解！";
+        proceed();
+    } else {
+        document.getElementById("message").style.color = "#FF0000";
+        document.getElementById("message").innerText = "× 不正解！";
+        // わずかに揺れる演出などがあっても良いですが、ここではシンプルに
+    }
+}
+
+function timeUp() {
+    clearInterval(timerInterval);
+    document.getElementById("message").style.color = "#FF8800";
+    document.getElementById("message").innerText = "時間切れ！ 正解は " + sessionQuizzes[currentQuestionIndex].ans;
+    proceed();
+}
+
+function proceed() {
+    canAnswer = false;
+    document.getElementById("answer-input").disabled = true;
+    setTimeout(() => {
+        if (!canAnswer && currentQuestionIndex < 10) {
+            currentQuestionIndex++;
+            showQuestion();
+        }
+    }, 2000); // 正解確認のため2秒待機
+}
+
+function showResult() {
+    document.getElementById("game-screen").style.display = "none";
+    document.getElementById("result-screen").style.display = "block";
+    document.getElementById("final-score").innerText = score;
+
+    let rank = "";
+    if (score === 10) rank = "S: プログラミングの達人";
+    else if (score >= 7) rank = "A: ベテラン";
+    else if (score >= 4) rank = "B: 見習い";
+    else rank = "C: 勉強中";
+    
+    document.getElementById("rank-display").innerText = "RANK: " + rank;
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && canAnswer) checkAnswer();
+    if (e.key === ' ' && !canAnswer && document.getElementById("game-screen").style.display !== "none") {
+        currentQuestionIndex++;
+        showQuestion();
+    }
+});
+
+initGame();
+</script>
+
+</body>
+</html>
